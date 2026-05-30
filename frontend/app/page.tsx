@@ -1,318 +1,361 @@
 "use client";
 
-import Image from "next/image";
+import dynamic from "next/dynamic";
 import { FormEvent, useState } from "react";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell, Legend,
+} from "recharts";
+import type { AnalysisResult } from "./types/analysis";
 import styles from "./page.module.css";
 
-type Building = {
-  id: string;
-  classification: "residential" | "commercial";
-  confidence: number;
-  width: number;
-  height: number;
-  area: number;
-  scoreBreakdown: {
-    areaScore: number;
-    ratioScore: number;
-    compactnessScore: number;
-    varianceScore: number;
-    hueScore: number;
-    textureScore: number;
-    finalScore: number;
-  };
-  cropDataUrl: string;
-  bounds: {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  };
+// Leaflet must render client-side only
+const MapView = dynamic(() => import("./components/MapView"), {
+  ssr: false,
+  loading: () => (
+    <div className={styles.mapPlaceholder}><span>Loading map…</span></div>
+  ),
+});
+
+const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+
+// ── Palette (matches CSS vars) ────────────────────────────────────────────────
+const C = {
+  teal:   "#14d9b4",
+  amber:  "#f59e0b",
+  rose:   "#f43f5e",
+  blue:   "#3b82f6",
+  violet: "#8b5cf6",
+  dim:    "#3d5068",
 };
 
-type AnalysisResponse = {
-  id: string;
-  createdAt: string;
-  location: {
-    query: string;
-    formattedAddress: string;
-    latitude: number;
-    longitude: number;
-  };
-  image: {
-    width: number;
-    height: number;
-    zoom: number;
-    mapType: string;
-    sourceUrl: string;
-  };
-  summary: {
-    totalDetectedBuildings: number;
-    residentialCount: number;
-    commercialCount: number;
-    populationEstimate: number;
-  };
-  assumptions: {
-    averageHouseholdSize: number;
-    occupancyFactor: number;
-    residentsPerResidentialBuilding: number;
-  };
-  buildings: Building[];
-  debug: {
-    segmentationThreshold: number;
-    minimumBuildingPixels: number;
-  };
-};
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmt(n: number) { return n.toLocaleString(); }
 
-const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
-
-function ScoreBar({ label, value }: { label: string; value: number }) {
+function StatCard({
+  label, value, accent, sub,
+}: {
+  label: string; value: string | number; accent?: string; sub?: string;
+}) {
   return (
-    <div className={styles.scoreRow}>
-      <span className={styles.scoreLabel}>{label}</span>
-      <div className={styles.scoreTrack}>
-        <div
-          className={styles.scoreFill}
-          style={{ width: `${Math.round(value * 100)}%` }}
-        />
-      </div>
-      <span className={styles.scoreValue}>{(value * 100).toFixed(0)}</span>
+    <div
+      className={styles.statCard}
+      style={{ "--accent": accent ?? C.teal } as React.CSSProperties}
+    >
+      <span className={styles.statLabel}>{label}</span>
+      <strong className={styles.statValue}>
+        {typeof value === "number" ? fmt(value) : value}
+      </strong>
+      {sub && <span className={styles.statSub}>{sub}</span>}
     </div>
   );
 }
 
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const [location, setLocation] = useState("");
-  const [result, setResult] = useState<AnalysisResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [expandedBuilding, setExpandedBuilding] = useState<string | null>(null);
+  const [query, setQuery]     = useState("");
+  const [result, setResult]   = useState<AnalysisResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [phase, setPhase]     = useState("");
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsLoading(true);
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!query.trim()) return;
+
+    setLoading(true);
     setError(null);
     setResult(null);
-    setExpandedBuilding(null);
+
+    const phases = [
+      "Resolving location via Nominatim…",
+      "Querying OpenStreetMap buildings…",
+      "Estimating population…",
+    ];
+    let p = 0;
+    setPhase(phases[0]);
+    const ticker = setInterval(() => {
+      p = Math.min(p + 1, phases.length - 1);
+      setPhase(phases[p]);
+    }, 4000);
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/analyze`, {
+      const res = await fetch(`${API}/api/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ location }),
+        body: JSON.stringify({ location: query }),
       });
-
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error || "Analysis failed");
-      }
-
-      setResult(payload);
-    } catch (submissionError) {
-      const message =
-        submissionError instanceof Error
-          ? submissionError.message
-          : "Unexpected error";
-      setError(message);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Analysis failed");
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unexpected error");
     } finally {
-      setIsLoading(false);
+      clearInterval(ticker);
+      setLoading(false);
+      setPhase("");
     }
   }
 
+  // ── Chart data ────────────────────────────────────────────────────────────
+  const barData = result
+    ? [
+        { name: "Residential", count: result.residentialBuildings, fill: C.teal   },
+        { name: "Commercial",  count: result.commercialBuildings,  fill: C.amber  },
+        { name: "Industrial",  count: result.industrialBuildings,  fill: C.rose   },
+        { name: "Other",       count: result.otherBuildings,       fill: C.dim    },
+      ]
+    : [];
+
+  const pieData = result
+    ? [
+        { name: "Residential", value: result.distribution.residentialPct, color: C.teal   },
+        { name: "Commercial",  value: result.distribution.commercialPct,  color: C.amber  },
+        { name: "Industrial",  value: result.distribution.industrialPct,  color: C.rose   },
+        { name: "Other",       value: result.distribution.otherPct,       color: C.dim    },
+      ].filter((d) => d.value > 0)
+    : [];
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <main className={styles.page}>
-      <section className={styles.hero}>
-        <div className={styles.heroCopy}>
-          <span className={styles.eyebrow}>Satellite Settlement Analysis</span>
-          <h1>Estimate urban activity from a single location query.</h1>
-          <p>
-            UrbanScope resolves a place name, pulls satellite imagery via ESRI
-            World Imagery, isolates likely buildings, classifies them with a
-            multi-feature rules engine (area, shape, colour, texture), and
-            estimates population from detected residential structures.
+    <div className={styles.shell}>
+
+      {/* ── Sidebar ───────────────────────────────────────────────────────── */}
+      <aside className={styles.sidebar}>
+        <div className={styles.sidebarTop}>
+
+          {/* Brand */}
+          <div className={styles.brand}>
+            <span className={styles.brandMark}>US</span>
+            <div>
+              <p className={styles.brandName}>UrbanScope</p>
+              <p className={styles.brandSub}>Geospatial Intelligence</p>
+            </div>
+          </div>
+
+          {/* Search */}
+          <form onSubmit={handleSubmit} className={styles.searchForm}>
+            <label className={styles.searchLabel} htmlFor="q">Location</label>
+            <div className={styles.searchRow}>
+              <input
+                id="q"
+                className={styles.searchInput}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Lagos, Abuja, London…"
+                autoComplete="off"
+                required
+              />
+              <button className={styles.searchBtn} type="submit" disabled={loading}>
+                {loading ? <span className={styles.dot} /> : "→"}
+              </button>
+            </div>
+            {loading && <p className={styles.phase}>{phase}</p>}
+            {error   && <p className={styles.errMsg}>{error}</p>}
+          </form>
+
+          {/* Data credit */}
+          <p className={styles.dataCredit}>
+            Buildings via <strong>OpenStreetMap</strong> + Overpass API<br />
+            Population via <strong>WorldPop</strong> + heuristics<br />
+            Geocoding via <strong>Nominatim</strong>
           </p>
         </div>
 
-        <form className={styles.form} onSubmit={handleSubmit}>
-          <label className={styles.label} htmlFor="location">
-            Location
-          </label>
-          <input
-            id="location"
-            className={styles.input}
-            value={location}
-            onChange={(event) => setLocation(event.target.value)}
-            placeholder="Enter a town, city, neighbourhood…"
-            required
-            autoComplete="off"
-          />
-          <button className={styles.button} type="submit" disabled={isLoading}>
-            {isLoading ? (
-              <span className={styles.buttonInner}>
-                <span className={styles.spinner} />
-                Analyzing…
-              </span>
-            ) : (
-              "Run Analysis"
-            )}
-          </button>
-          <p className={styles.helper}>
-            Imagery from ESRI World Imagery · Geocoding by OpenStreetMap
-            Nominatim · No API keys required.
-          </p>
-          {error ? <p className={styles.error}>{error}</p> : null}
-        </form>
-      </section>
+        {/* Stats — only visible after a result */}
+        {result && (
+          <div className={styles.sidebarStats}>
+            <p className={styles.locName}>{result.location.displayName}</p>
 
-      {result ? (
-        <>
-          <section className={styles.summaryGrid}>
-            <article className={styles.metricCard}>
-              <span>Residential</span>
-              <strong>{result.summary.residentialCount}</strong>
-            </article>
-            <article className={styles.metricCard}>
-              <span>Commercial</span>
-              <strong>{result.summary.commercialCount}</strong>
-            </article>
-            <article className={styles.metricCard}>
-              <span>Population Estimate</span>
-              <strong>{result.summary.populationEstimate.toLocaleString()}</strong>
-            </article>
-            <article className={styles.metricCard}>
-              <span>Total Detections</span>
-              <strong>{result.summary.totalDetectedBuildings}</strong>
-            </article>
-          </section>
-
-          <section className={styles.details}>
-            <div className={styles.panel}>
-              <div className={styles.sectionHeader}>
-                <h2>Location</h2>
-                <span className={styles.muted}>{result.location.formattedAddress}</span>
-              </div>
-              <dl className={styles.dataList}>
-                <div>
-                  <dt>Coordinates</dt>
-                  <dd>
-                    {result.location.latitude.toFixed(5)},{" "}
-                    {result.location.longitude.toFixed(5)}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Map Zoom</dt>
-                  <dd>{result.image.zoom}</dd>
-                </div>
-                <div>
-                  <dt>Residents / Residential Building</dt>
-                  <dd>{result.assumptions.residentsPerResidentialBuilding}</dd>
-                </div>
-                <div>
-                  <dt>Segmentation Threshold</dt>
-                  <dd>{result.debug.segmentationThreshold}</dd>
-                </div>
-              </dl>
+            <div className={styles.statGrid}>
+              <StatCard label="Total Buildings"  value={result.totalBuildings}       accent={C.teal}   />
+              <StatCard label="Residential"      value={result.residentialBuildings} accent={C.teal}   />
+              <StatCard label="Commercial"       value={result.commercialBuildings}  accent={C.amber}  />
+              <StatCard label="Industrial"       value={result.industrialBuildings}  accent={C.rose}   />
+              <StatCard label="Apartments"       value={result.apartments}           accent={C.blue}   />
+              <StatCard label="Houses"           value={result.houses}               accent={C.violet} />
             </div>
 
-            <div className={styles.panel}>
-              <div className={styles.sectionHeader}>
-                <h2>Source Image</h2>
-                <a
-                  href={result.image.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={styles.link}
-                >
-                  View on OpenStreetMap ↗
-                </a>
+            <div className={styles.popBlock}>
+              <div className={styles.popRow}>
+                <div>
+                  <span className={styles.popLabel}>Est. Population</span>
+                  <strong className={styles.popValue}>{fmt(result.estimatedPopulation)}</strong>
+                </div>
+                <div>
+                  <span className={styles.popLabel}>Density</span>
+                  <strong className={styles.popValue}>
+                    {fmt(result.populationDensity)}<small> /km²</small>
+                  </strong>
+                </div>
               </div>
-              <p className={styles.sourceText}>
-                A {result.image.width}×{result.image.height}px satellite tile
-                centred on the resolved location is stitched from ESRI World
-                Imagery and analysed pixel-by-pixel. Building candidates are
-                found via luma threshold + Sobel edge detection, then classified
-                using six features: footprint area, aspect ratio, pixel
-                coverage, luma variance, roof hue, and texture roughness.
+              <p className={styles.popSource}>Source: {result.populationSource}</p>
+            </div>
+
+            {result.fromCache && (
+              <p className={styles.cacheNote}>
+                ⚡ Cached · {new Date(result.cachedAt).toLocaleDateString()}
               </p>
-            </div>
-          </section>
+            )}
+          </div>
+        )}
+      </aside>
 
-          <section className={styles.galleryPanel}>
-            <div className={styles.sectionHeader}>
-              <h2>Detected Buildings</h2>
-              <span className={styles.muted}>
-                {result.buildings.length} cropped candidates · click any card
-                for score breakdown
-              </span>
-            </div>
+      {/* ── Main ──────────────────────────────────────────────────────────── */}
+      <main className={styles.main}>
 
-            <div className={styles.gallery}>
-              {result.buildings.map((building) => (
-                <article
-                  className={`${styles.cropCard} ${
-                    expandedBuilding === building.id ? styles.cropCardExpanded : ""
-                  }`}
-                  key={building.id}
-                  onClick={() =>
-                    setExpandedBuilding(
-                      expandedBuilding === building.id ? null : building.id
-                    )
-                  }
+        {/* Map */}
+        <div className={styles.mapWrap}>
+          {result ? (
+            <MapView
+              latitude={result.location.coordinates.latitude}
+              longitude={result.location.coordinates.longitude}
+              boundingBox={result.location.boundingBox}
+              displayName={result.location.displayName}
+            />
+          ) : (
+            <div className={styles.mapEmpty}>
+              <div className={styles.mapEmptyInner}>
+                <p className={styles.mapEmptyEyebrow}>Geospatial Analysis</p>
+                <h1 className={styles.mapEmptyHeading}>
+                  Urban Intelligence<br /><em>from Open Data</em>
+                </h1>
+                <p className={styles.mapEmptyBody}>
+                  Enter any city, town, or region to retrieve building counts,
+                  type distributions, and population estimates — powered entirely
+                  by OpenStreetMap, Overpass API, and WorldPop.
+                </p>
+              </div>
+              <div className={styles.gridOverlay} aria-hidden />
+            </div>
+          )}
+        </div>
+
+        {/* Charts */}
+        {result && (
+          <div className={styles.chartsRow}>
+
+            {/* Bar chart — building counts */}
+            <div className={styles.chartCard}>
+              <h2 className={styles.chartTitle}>Building Counts</h2>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart
+                  data={barData}
+                  margin={{ top: 4, right: 4, left: -14, bottom: 0 }}
                 >
-                  <div className={styles.cropImageWrap}>
-                    <Image
-                      alt={`Detected ${building.classification} building`}
-                      src={building.cropDataUrl}
-                      width={building.width}
-                      height={building.height}
-                      unoptimized
-                    />
-                    <span
-                      className={`${styles.badge} ${
-                        building.classification === "residential"
-                          ? styles.badgeResidential
-                          : styles.badgeCommercial
-                      }`}
-                    >
-                      {building.classification === "residential" ? "R" : "C"}
-                    </span>
-                  </div>
-
-                  <div className={styles.cropMeta}>
-                    <div className={styles.cropMetaRow}>
-                      <strong className={styles.cropType}>
-                        {building.classification}
-                      </strong>
-                      <span className={styles.cropConf}>
-                        {Math.round(building.confidence * 100)}%
-                      </span>
-                    </div>
-                    <p className={styles.cropDims}>
-                      {building.width}×{building.height}px
-                    </p>
-                  </div>
-
-                  {expandedBuilding === building.id && (
-                    <div className={styles.scoreBreakdown}>
-                      <ScoreBar label="Area" value={building.scoreBreakdown.areaScore} />
-                      <ScoreBar label="Ratio" value={building.scoreBreakdown.ratioScore} />
-                      <ScoreBar label="Fill" value={building.scoreBreakdown.compactnessScore} />
-                      <ScoreBar label="Variance" value={building.scoreBreakdown.varianceScore} />
-                      <ScoreBar label="Hue" value={building.scoreBreakdown.hueScore} />
-                      <ScoreBar label="Texture" value={building.scoreBreakdown.textureScore} />
-                      <div className={styles.scoreFinalRow}>
-                        <span>Final score</span>
-                        <strong>{(building.scoreBreakdown.finalScore * 100).toFixed(1)}</strong>
-                      </div>
-                    </div>
-                  )}
-                </article>
-              ))}
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: C.dim, fontSize: 10, fontFamily: "JetBrains Mono" }}
+                    axisLine={false} tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: C.dim, fontSize: 10, fontFamily: "JetBrains Mono" }}
+                    axisLine={false} tickLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#111927",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 8,
+                      fontFamily: "JetBrains Mono",
+                      fontSize: 11,
+                    }}
+                    labelStyle={{ color: "#dde4f0" }}
+                    itemStyle={{ color: C.teal }}
+                    cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                  />
+                  <Bar dataKey="count" radius={[3, 3, 0, 0]}>
+                    {barData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-          </section>
-        </>
-      ) : null}
-    </main>
+
+            {/* Pie chart — distribution */}
+            <div className={styles.chartCard}>
+              <h2 className={styles.chartTitle}>Distribution</h2>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%" cy="50%"
+                    innerRadius={50} outerRadius={78}
+                    paddingAngle={3}
+                    label={({ value }) => `${value}%`}
+                    labelLine={false}
+                  >
+                    {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Pie>
+                  <Legend
+                    iconType="circle" iconSize={7}
+                    wrapperStyle={{
+                      fontSize: 10,
+                      fontFamily: "JetBrains Mono",
+                      color: C.dim,
+                    }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#111927",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 8,
+                      fontFamily: "JetBrains Mono",
+                      fontSize: 11,
+                    }}
+                    formatter={(v) => [`${v}%`, ""]}
+                    itemStyle={{ color: "#dde4f0" }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Breakdown bars + metadata */}
+            <div className={styles.chartCard}>
+              <h2 className={styles.chartTitle}>Breakdown</h2>
+              <div className={styles.breakdown}>
+                {[
+                  { label: "Residential", pct: result.distribution.residentialPct, color: C.teal   },
+                  { label: "Commercial",  pct: result.distribution.commercialPct,  color: C.amber  },
+                  { label: "Industrial",  pct: result.distribution.industrialPct,  color: C.rose   },
+                  { label: "Other",       pct: result.distribution.otherPct,       color: C.dim    },
+                ].map((row) => (
+                  <div key={row.label} className={styles.breakdownRow}>
+                    <span className={styles.breakdownLabel}>{row.label}</span>
+                    <div className={styles.breakdownTrack}>
+                      <div
+                        className={styles.breakdownFill}
+                        style={{ width: `${row.pct}%`, background: row.color }}
+                      />
+                    </div>
+                    <span className={styles.breakdownPct}>{row.pct}%</span>
+                  </div>
+                ))}
+
+                <div className={styles.breakdownMeta}>
+                  <div>
+                    <span>Place type</span>
+                    <strong>{result.location.placeType}</strong>
+                  </div>
+                  <div>
+                    <span>Lat / Lng</span>
+                    <strong>
+                      {result.location.coordinates.latitude.toFixed(4)},&nbsp;
+                      {result.location.coordinates.longitude.toFixed(4)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>OSM type</span>
+                    <strong>{result.location.osmType ?? "—"}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

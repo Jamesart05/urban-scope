@@ -2,20 +2,27 @@ export const config = {
   port: Number(process.env.PORT || 4000),
   clientOrigin: process.env.CLIENT_ORIGIN || "http://localhost:3000",
   mongoUri: process.env.MONGODB_URI || "",
-  maps: {
-    zoom: 16,           // zoom 16 = ~600m across at equator — good neighbourhood coverage
-    size: {
-      width: 1280,      // larger canvas = more buildings captured
-      height: 1280,
-    },
-    scale: 1,
-    mapType: "satellite",
+
+  nominatim: {
+    baseUrl: "https://nominatim.openstreetmap.org",
+    userAgent: "UrbanScope/2.0 (geospatial-analysis)",
   },
-  analysis: {
-    segmentationThreshold: 90,    // low: ESRI tiles are JPEG-compressed and darker
-    minimumBuildingPixels: 60,    // low: catch smaller rooftops
-    maximumBuildings: 200,
-    averageHouseholdSize: 5,      // Nigerian average household size ~5
-    occupancyFactor: 1,           // 1 household per residential building detected
+
+  overpass: {
+    baseUrl: "https://overpass-api.de/api/interpreter",
+    // Timeout for the Overpass query itself (seconds, sent in the QL)
+    queryTimeout: 60,
+    // Max HTTP wait (ms)
+    httpTimeout: 90_000,
+  },
+
+  worldpop: {
+    // REST API for country-level population summaries
+    baseUrl: "https://api.worldpop.org/v1",
+  },
+
+  cache: {
+    // Results cached in MongoDB for this many milliseconds (1 hour)
+    ttlMs: 60 * 60 * 1000,
   },
 };

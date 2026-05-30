@@ -1,67 +1,75 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 
 :root {
-  --bg: #0d1117;
-  --bg2: #111820;
-  --panel: rgba(20, 28, 38, 0.85);
-  --panel-solid: #141c26;
-  --panel-hover: rgba(26, 36, 50, 0.95);
-  --text: #e8edf3;
-  --muted: #7a8a9a;
-  --muted2: #4a5a6a;
-  --accent: #3dd68c;
-  --accent-dim: rgba(61, 214, 140, 0.12);
-  --accent-glow: rgba(61, 214, 140, 0.25);
-  --residential: #3dd68c;
-  --residential-bg: rgba(61, 214, 140, 0.1);
-  --commercial: #f59e42;
-  --commercial-bg: rgba(245, 158, 66, 0.1);
-  --border: rgba(255, 255, 255, 0.07);
-  --border-hover: rgba(255, 255, 255, 0.14);
-  --danger: #f87171;
-  --shadow-sm: 0 2px 8px rgba(0,0,0,0.4);
-  --shadow: 0 8px 32px rgba(0,0,0,0.5);
-  --shadow-lg: 0 24px 80px rgba(0,0,0,0.6);
-  --radius-sm: 10px;
-  --radius: 18px;
-  --radius-lg: 26px;
-  --font-display: 'DM Serif Display', Georgia, serif;
-  --font-body: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'DM Mono', 'Courier New', monospace;
+  --ink:         #080c12;
+  --ink2:        #0d1420;
+  --surface:     #111927;
+  --surface2:    #172030;
+  --surface3:    #1d2a3e;
+  --rim:         rgba(255,255,255,0.06);
+  --rim2:        rgba(255,255,255,0.11);
+  --rim3:        rgba(255,255,255,0.18);
+
+  --text:        #dde4f0;
+  --text2:       #7a8fa8;
+  --text3:       #3d5068;
+
+  --teal:        #14d9b4;
+  --teal-dim:    rgba(20,217,180,0.10);
+  --teal-glow:   rgba(20,217,180,0.20);
+  --teal-border: rgba(20,217,180,0.28);
+
+  --amber:       #f59e0b;
+  --amber-dim:   rgba(245,158,11,0.10);
+
+  --rose:        #f43f5e;
+  --rose-dim:    rgba(244,63,94,0.10);
+
+  --blue:        #3b82f6;
+  --blue-dim:    rgba(59,130,246,0.10);
+
+  --violet:      #8b5cf6;
+  --violet-dim:  rgba(139,92,246,0.10);
+
+  --danger:      #f87171;
+
+  --r-xs:  6px;
+  --r-sm:  10px;
+  --r:     16px;
+  --r-lg:  24px;
+  --r-xl:  32px;
+
+  --shadow-sm:  0 2px 8px rgba(0,0,0,0.4);
+  --shadow:     0 8px 28px rgba(0,0,0,0.5);
+  --shadow-lg:  0 20px 60px rgba(0,0,0,0.6);
+
+  --font-display: 'Syne', system-ui, sans-serif;
+  --font-body:    'Instrument Sans', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Courier New', monospace;
+
+  --sidebar-w: 340px;
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html {
   font-family: var(--font-body);
-  font-size: 16px;
-  background-color: var(--bg);
+  font-size: 15px;
+  background: var(--ink);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  height: 100%;
 }
 
 body {
-  min-height: 100vh;
-  background:
-    radial-gradient(ellipse 80% 50% at 0% 0%, rgba(61, 214, 140, 0.06) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 100% 80%, rgba(99, 102, 241, 0.05) 0%, transparent 50%),
-    var(--bg);
+  height: 100%;
+  overflow: hidden;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
+a { color: inherit; text-decoration: none; }
+button, input { font: inherit; }
 
-button, input {
-  font: inherit;
-}
-
-img {
-  max-width: 100%;
-  display: block;
-}
+/* ── Leaflet z-index ──────────────────────────────────────────────────────── */
+.leaflet-pane        { z-index: 1 !important; }
+.leaflet-top,
+.leaflet-bottom      { z-index: 2 !important; }

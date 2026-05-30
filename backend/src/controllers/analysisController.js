@@ -1,103 +1,167 @@
 import { config } from "../config.js";
 import { AnalysisResult } from "../models/AnalysisResult.js";
-import {
-  fetchStaticMapImage,
-  geocodeLocation,
-} from "../services/mapsService.js";
-import { analyzeSatelliteImage } from "../services/imageAnalysisService.js";
+import { geocodeLocation } from "../services/nominatimService.js";
+import { queryBuildings } from "../services/overpassService.js";
+import { estimatePopulation } from "../services/populationService.js";
 
-export async function createAnalysis(request, response, next) {
+// ── Country ISO-2 extraction ──────────────────────────────────────────────────
+// Nominatim's addressdetails includes country_code — pull it from display_name
+// as a last resort using a small country-name → ISO-2 map.
+
+const COUNTRY_NAME_MAP = {
+  nigeria: "ng", kenya: "ke", ghana: "gh", "south africa": "za",
+  ethiopia: "et", tanzania: "tz", egypt: "eg", morocco: "ma",
+  "united states": "us", "united states of america": "us",
+  "united kingdom": "gb", germany: "de", france: "fr",
+  india: "in", brazil: "br", china: "cn", indonesia: "id",
+  pakistan: "pk", bangladesh: "bd",
+};
+
+function guessCountryIso2(displayName) {
+  const lower = displayName.toLowerCase();
+  for (const [name, code] of Object.entries(COUNTRY_NAME_MAP)) {
+    if (lower.includes(name)) return code;
+  }
+  return null;
+}
+
+// ── Shape response ────────────────────────────────────────────────────────────
+
+function shapeResponse(doc) {
+  const b = doc.buildings;
+  const totalTagged = b.residential + b.apartments + b.commercial + b.industrial;
+  const residentialTotal = b.residential + b.apartments;
+
+  return {
+    id: doc._id,
+    cachedAt: doc.createdAt,
+    query: doc.query,
+    location: {
+      displayName: doc.location.displayName,
+      coordinates: {
+        latitude:  doc.location.latitude,
+        longitude: doc.location.longitude,
+      },
+      boundingBox:  doc.location.boundingBox,
+      osmId:        doc.location.osmId,
+      osmType:      doc.location.osmType,
+      placeType:    doc.location.placeType,
+    },
+    totalBuildings:       b.total,
+    residentialBuildings: residentialTotal,
+    commercialBuildings:  b.commercial,
+    industrialBuildings:  b.industrial,
+    apartments:           b.apartments,
+    houses:               b.houses,
+    otherBuildings:       b.other,
+    distribution: {
+      residentialPct: b.total > 0 ? +((residentialTotal / b.total) * 100).toFixed(1) : 0,
+      commercialPct:  b.total > 0 ? +((b.commercial     / b.total) * 100).toFixed(1) : 0,
+      industrialPct:  b.total > 0 ? +((b.industrial     / b.total) * 100).toFixed(1) : 0,
+      otherPct:       b.total > 0 ? +((b.other          / b.total) * 100).toFixed(1) : 0,
+    },
+    estimatedPopulation: doc.population.estimated,
+    populationDensity:   doc.population.density,
+    populationSource:    doc.population.source,
+  };
+}
+
+// ── POST /api/analyze ─────────────────────────────────────────────────────────
+
+export async function createAnalysis(req, res, next) {
   try {
-    const locationQuery = String(request.body?.location || "").trim();
+    const query = String(req.body?.location ?? "").trim();
+    if (!query) return res.status(400).json({ error: "location is required" });
 
-    if (!locationQuery) {
-      return response.status(400).json({ error: "A location value is required" });
+    const normalised = query.toLowerCase();
+
+    // ── Cache check ──────────────────────────────────────────────────────────
+    const cached = await AnalysisResult.findOne({
+      query: normalised,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (cached) {
+      return res.json({ ...shapeResponse(cached), fromCache: true });
     }
 
-    const resolvedLocation = await geocodeLocation(locationQuery);
-    const mapImage = await fetchStaticMapImage({
-      latitude: resolvedLocation.latitude,
-      longitude: resolvedLocation.longitude,
-    });
-    const analysis = await analyzeSatelliteImage(mapImage.buffer);
+    // ── Geocode ──────────────────────────────────────────────────────────────
+    const geo = await geocodeLocation(query);
 
-    const residentialCount = analysis.buildings.filter(
-      (b) => b.classification === "residential"
-    ).length;
-    const commercialCount = analysis.buildings.length - residentialCount;
-    const residentsPerResidentialBuilding =
-      config.analysis.averageHouseholdSize * config.analysis.occupancyFactor;
-    const populationEstimate = residentialCount * residentsPerResidentialBuilding;
+    const countryIso2 = guessCountryIso2(geo.displayName);
 
-    const savedResult = await AnalysisResult.create({
-      location: {
-        query: locationQuery,
-        formattedAddress: resolvedLocation.formattedAddress,
-        latitude: resolvedLocation.latitude,
-        longitude: resolvedLocation.longitude,
-      },
-      image: {
-        width: analysis.imageWidth,
-        height: analysis.imageHeight,
-        zoom: config.maps.zoom,
-        mapType: config.maps.mapType,
-        sourceUrl: mapImage.sourceUrl,
-      },
-      summary: {
-        totalDetectedBuildings: analysis.buildings.length,
-        residentialCount,
-        commercialCount,
-        populationEstimate,
-      },
-      assumptions: {
-        averageHouseholdSize: config.analysis.averageHouseholdSize,
-        occupancyFactor: config.analysis.occupancyFactor,
-        residentsPerResidentialBuilding,
-      },
-      buildings: analysis.buildings,
-      debug: analysis.debug,
+    // ── Overpass ─────────────────────────────────────────────────────────────
+    const buildings = await queryBuildings(geo.boundingBox);
+
+    // ── Population ───────────────────────────────────────────────────────────
+    const pop = await estimatePopulation({
+      bbox:          geo.boundingBox,
+      buildingCounts: buildings,
+      countryIso2,
     });
 
-    return response.status(201).json({
-      id: savedResult.id,
-      createdAt: savedResult.createdAt,
-      location: savedResult.location,
-      image: savedResult.image,
-      summary: savedResult.summary,
-      assumptions: savedResult.assumptions,
-      buildings: savedResult.buildings,
-      debug: savedResult.debug,
-    });
-  } catch (error) {
-    return next(error);
+    // ── Persist ──────────────────────────────────────────────────────────────
+    const expiresAt = new Date(Date.now() + config.cache.ttlMs);
+
+    const doc = await AnalysisResult.findOneAndUpdate(
+      { query: normalised },
+      {
+        query: normalised,
+        location: {
+          displayName: geo.displayName,
+          latitude:    geo.latitude,
+          longitude:   geo.longitude,
+          boundingBox: geo.boundingBox,
+          osmId:       geo.osmId,
+          osmType:     geo.osmType,
+          placeType:   geo.placeType,
+        },
+        buildings,
+        population: {
+          estimated: pop.estimatedPopulation,
+          density:   pop.populationDensity,
+          source:    pop.source,
+        },
+        countryIso2,
+        expiresAt,
+      },
+      { upsert: true, new: true }
+    );
+
+    return res.status(201).json({ ...shapeResponse(doc), fromCache: false });
+  } catch (err) {
+    return next(err);
   }
 }
 
-export async function listAnalyses(request, response, next) {
+// ── GET /api/analyses ─────────────────────────────────────────────────────────
+
+export async function listAnalyses(req, res, next) {
   try {
-    const limit = Math.min(Number(request.query.limit) || 20, 100);
-    const results = await AnalysisResult.find(
-      {},
-      { buildings: 0 } // omit heavy building array for list view
-    )
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const docs = await AnalysisResult.find({}, {
+      query: 1, "location.displayName": 1, "location.latitude": 1,
+      "location.longitude": 1, "buildings.total": 1,
+      "population.estimated": 1, createdAt: 1,
+    })
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
 
-    return response.json(results);
-  } catch (error) {
-    return next(error);
+    return res.json(docs);
+  } catch (err) {
+    return next(err);
   }
 }
 
-export async function getAnalysis(request, response, next) {
+// ── GET /api/analyses/:id ─────────────────────────────────────────────────────
+
+export async function getAnalysis(req, res, next) {
   try {
-    const result = await AnalysisResult.findById(request.params.id).lean();
-    if (!result) {
-      return response.status(404).json({ error: "Analysis not found" });
-    }
-    return response.json(result);
-  } catch (error) {
-    return next(error);
+    const doc = await AnalysisResult.findById(req.params.id).lean();
+    if (!doc) return res.status(404).json({ error: "Not found" });
+    return res.json(shapeResponse(doc));
+  } catch (err) {
+    return next(err);
   }
 }
