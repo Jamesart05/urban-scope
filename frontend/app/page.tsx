@@ -16,6 +16,8 @@ type Building = {
     ratioScore: number;
     compactnessScore: number;
     varianceScore: number;
+    hueScore: number;
+    textureScore: number;
     finalScore: number;
   };
   cropDataUrl: string;
@@ -64,24 +66,40 @@ type AnalysisResponse = {
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
+function ScoreBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div className={styles.scoreRow}>
+      <span className={styles.scoreLabel}>{label}</span>
+      <div className={styles.scoreTrack}>
+        <div
+          className={styles.scoreFill}
+          style={{ width: `${Math.round(value * 100)}%` }}
+        />
+      </div>
+      <span className={styles.scoreValue}>{(value * 100).toFixed(0)}</span>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [location, setLocation] = useState("");
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [expandedBuilding, setExpandedBuilding] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
+    setResult(null);
+    setExpandedBuilding(null);
 
     try {
       const response = await fetch(`${apiBaseUrl}/api/analyze`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ location })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ location }),
       });
 
       const payload = await response.json();
@@ -97,7 +115,6 @@ export default function HomePage() {
           ? submissionError.message
           : "Unexpected error";
       setError(message);
-      setResult(null);
     } finally {
       setIsLoading(false);
     }
@@ -110,10 +127,10 @@ export default function HomePage() {
           <span className={styles.eyebrow}>Satellite Settlement Analysis</span>
           <h1>Estimate urban activity from a single location query.</h1>
           <p>
-            UrbanScope resolves a place name, pulls satellite imagery through the
-            Google Maps API, isolates likely buildings, classifies them with a
-            deterministic rules engine, and estimates population from detected
-            residential structures.
+            UrbanScope resolves a place name, pulls satellite imagery via ESRI
+            World Imagery, isolates likely buildings, classifies them with a
+            multi-feature rules engine (area, shape, colour, texture), and
+            estimates population from detected residential structures.
           </p>
         </div>
 
@@ -126,15 +143,23 @@ export default function HomePage() {
             className={styles.input}
             value={location}
             onChange={(event) => setLocation(event.target.value)}
-            placeholder="Enter a town, city, state, or country"
+            placeholder="Enter a town, city, neighbourhood…"
             required
+            autoComplete="off"
           />
           <button className={styles.button} type="submit" disabled={isLoading}>
-            {isLoading ? "Analyzing..." : "Run Analysis"}
+            {isLoading ? (
+              <span className={styles.buttonInner}>
+                <span className={styles.spinner} />
+                Analyzing…
+              </span>
+            ) : (
+              "Run Analysis"
+            )}
           </button>
           <p className={styles.helper}>
-            This estimate is heuristic. Building footprints and occupancy are not
-            authoritative census values.
+            Imagery from ESRI World Imagery · Geocoding by OpenStreetMap
+            Nominatim · No API keys required.
           </p>
           {error ? <p className={styles.error}>{error}</p> : null}
         </form>
@@ -144,16 +169,16 @@ export default function HomePage() {
         <>
           <section className={styles.summaryGrid}>
             <article className={styles.metricCard}>
-              <span>Residential Buildings</span>
+              <span>Residential</span>
               <strong>{result.summary.residentialCount}</strong>
             </article>
             <article className={styles.metricCard}>
-              <span>Commercial Buildings</span>
+              <span>Commercial</span>
               <strong>{result.summary.commercialCount}</strong>
             </article>
             <article className={styles.metricCard}>
               <span>Population Estimate</span>
-              <strong>{result.summary.populationEstimate}</strong>
+              <strong>{result.summary.populationEstimate.toLocaleString()}</strong>
             </article>
             <article className={styles.metricCard}>
               <span>Total Detections</span>
@@ -165,7 +190,7 @@ export default function HomePage() {
             <div className={styles.panel}>
               <div className={styles.sectionHeader}>
                 <h2>Location</h2>
-                <span>{result.location.formattedAddress}</span>
+                <span className={styles.muted}>{result.location.formattedAddress}</span>
               </div>
               <dl className={styles.dataList}>
                 <div>
@@ -180,7 +205,7 @@ export default function HomePage() {
                   <dd>{result.image.zoom}</dd>
                 </div>
                 <div>
-                  <dt>Residents Per Residential Building</dt>
+                  <dt>Residents / Residential Building</dt>
                   <dd>{result.assumptions.residentsPerResidentialBuilding}</dd>
                 </div>
                 <div>
@@ -193,13 +218,22 @@ export default function HomePage() {
             <div className={styles.panel}>
               <div className={styles.sectionHeader}>
                 <h2>Source Image</h2>
-                <a href={result.image.sourceUrl} target="_blank" rel="noreferrer">
-                  Open in Google Maps
+                <a
+                  href={result.image.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={styles.link}
+                >
+                  View on OpenStreetMap ↗
                 </a>
               </div>
               <p className={styles.sourceText}>
-                The backend fetches a satellite image centered on the resolved
-                location and performs building candidate extraction on the raster.
+                A {result.image.width}×{result.image.height}px satellite tile
+                centred on the resolved location is stitched from ESRI World
+                Imagery and analysed pixel-by-pixel. Building candidates are
+                found via luma threshold + Sobel edge detection, then classified
+                using six features: footprint area, aspect ratio, pixel
+                coverage, luma variance, roof hue, and texture roughness.
               </p>
             </div>
           </section>
@@ -207,28 +241,72 @@ export default function HomePage() {
           <section className={styles.galleryPanel}>
             <div className={styles.sectionHeader}>
               <h2>Detected Buildings</h2>
-              <span>{result.buildings.length} cropped candidates</span>
+              <span className={styles.muted}>
+                {result.buildings.length} cropped candidates · click any card
+                for score breakdown
+              </span>
             </div>
 
             <div className={styles.gallery}>
               {result.buildings.map((building) => (
-                <article className={styles.cropCard} key={building.id}>
-                  <Image
-                    alt={`Detected ${building.classification} building`}
-                    src={building.cropDataUrl}
-                    width={building.width}
-                    height={building.height}
-                    unoptimized
-                  />
+                <article
+                  className={`${styles.cropCard} ${
+                    expandedBuilding === building.id ? styles.cropCardExpanded : ""
+                  }`}
+                  key={building.id}
+                  onClick={() =>
+                    setExpandedBuilding(
+                      expandedBuilding === building.id ? null : building.id
+                    )
+                  }
+                >
+                  <div className={styles.cropImageWrap}>
+                    <Image
+                      alt={`Detected ${building.classification} building`}
+                      src={building.cropDataUrl}
+                      width={building.width}
+                      height={building.height}
+                      unoptimized
+                    />
+                    <span
+                      className={`${styles.badge} ${
+                        building.classification === "residential"
+                          ? styles.badgeResidential
+                          : styles.badgeCommercial
+                      }`}
+                    >
+                      {building.classification === "residential" ? "R" : "C"}
+                    </span>
+                  </div>
+
                   <div className={styles.cropMeta}>
-                    <div>
-                      <strong>{building.classification}</strong>
-                      <span>{Math.round(building.confidence * 100)}% confidence</span>
+                    <div className={styles.cropMetaRow}>
+                      <strong className={styles.cropType}>
+                        {building.classification}
+                      </strong>
+                      <span className={styles.cropConf}>
+                        {Math.round(building.confidence * 100)}%
+                      </span>
                     </div>
-                    <p>
-                      {building.width}x{building.height}px | area {building.area}px
+                    <p className={styles.cropDims}>
+                      {building.width}×{building.height}px
                     </p>
                   </div>
+
+                  {expandedBuilding === building.id && (
+                    <div className={styles.scoreBreakdown}>
+                      <ScoreBar label="Area" value={building.scoreBreakdown.areaScore} />
+                      <ScoreBar label="Ratio" value={building.scoreBreakdown.ratioScore} />
+                      <ScoreBar label="Fill" value={building.scoreBreakdown.compactnessScore} />
+                      <ScoreBar label="Variance" value={building.scoreBreakdown.varianceScore} />
+                      <ScoreBar label="Hue" value={building.scoreBreakdown.hueScore} />
+                      <ScoreBar label="Texture" value={building.scoreBreakdown.textureScore} />
+                      <div className={styles.scoreFinalRow}>
+                        <span>Final score</span>
+                        <strong>{(building.scoreBreakdown.finalScore * 100).toFixed(1)}</strong>
+                      </div>
+                    </div>
+                  )}
                 </article>
               ))}
             </div>
