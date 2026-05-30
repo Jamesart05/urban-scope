@@ -98,8 +98,8 @@ export async function estimatePopulation({ bbox, buildingCounts, countryIso2 }) 
   //   Europe ≈ 2.3, North America ≈ 2.5
   // We use a conservative global average of 3.5 for unknown countries.
 
-  const avgHouseholdSize  = 3.5;
-  const avgApartmentSize  = 2.8; // apartments tend to be smaller households
+  const avgHouseholdSize  = 4.8;
+  const avgApartmentSize  = 3.5;  // apartments tend to be smaller households
 
   const estimated = Math.round(
     buildingCounts.houses      * avgHouseholdSize  +

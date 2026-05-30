@@ -1,9 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    UrbanScope — Dashboard layout
-   Shell: full-viewport split — fixed sidebar left, scrollable main right
    ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Shell ───────────────────────────────────────────────────────────────── */
 
 .shell {
   display: flex;
@@ -117,6 +114,7 @@
 }
 
 .searchInput::placeholder { color: var(--text3); }
+
 .searchInput:focus {
   border-color: var(--teal-border);
   box-shadow: 0 0 0 3px var(--teal-glow);
@@ -162,7 +160,7 @@
   animation: pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes pulse { 0%,100% { opacity: 0.5 } 50% { opacity: 1 } }
+@keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
 
 .errMsg {
   font-size: 0.8rem;
@@ -174,7 +172,7 @@
   line-height: 1.4;
 }
 
-/* ── Data credit ──────────────────────────────────────────────────────────── */
+/* ── Data credit ─────────────────────────────────────────────────────────── */
 
 .dataCredit {
   margin-top: 1rem;
@@ -190,7 +188,7 @@
 
 .dataCredit strong { color: var(--text2); font-weight: 500; }
 
-/* ── Sidebar stats section ─────────────────────────────────────────────────── */
+/* ── Sidebar stats ───────────────────────────────────────────────────────── */
 
 .sidebarStats {
   padding: 1.25rem 1.5rem 1.5rem;
@@ -321,7 +319,7 @@
   letter-spacing: 0.04em;
 }
 
-/* ── Cache note ───────────────────────────────────────────────────────────── */
+/* ── Cache note ──────────────────────────────────────────────────────────── */
 
 .cacheNote {
   font-family: var(--font-mono);
@@ -419,10 +417,8 @@
   color: var(--text2);
   line-height: 1.7;
   max-width: 44ch;
-  font-weight: 400;
 }
 
-/* Animated grid overlay */
 .gridOverlay {
   position: absolute;
   inset: 0;
@@ -470,7 +466,7 @@
   margin-bottom: 1.25rem;
 }
 
-/* ── Breakdown bars ───────────────────────────────────────────────────────── */
+/* ── Breakdown bars ──────────────────────────────────────────────────────── */
 
 .breakdown {
   display: flex;
@@ -550,7 +546,6 @@
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 1024px) {
-  :root { --sidebar-w: 280px; }
   .chartsRow { grid-template-columns: 1fr 1fr; }
   .chartsRow > .chartCard:last-child { grid-column: 1 / -1; }
 }
@@ -558,7 +553,6 @@
 @media (max-width: 720px) {
   .shell { flex-direction: column; overflow: auto; }
   .sidebar { width: 100%; height: auto; border-right: none; border-bottom: 1px solid var(--rim); }
-  body { overflow: auto; }
   .main { height: auto; overflow: visible; }
   .mapWrap { flex: 0 0 300px; }
   .chartsRow { grid-template-columns: 1fr; }

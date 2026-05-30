@@ -3,8 +3,16 @@
 import dynamic from "next/dynamic";
 import { FormEvent, useState } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
 } from "recharts";
 import type { AnalysisResult } from "./types/analysis";
 import styles from "./page.module.css";
@@ -13,29 +21,40 @@ import styles from "./page.module.css";
 const MapView = dynamic(() => import("./components/MapView"), {
   ssr: false,
   loading: () => (
-    <div className={styles.mapPlaceholder}><span>Loading map…</span></div>
+    <div className={styles.mapPlaceholder}>
+      <span>Loading map…</span>
+    </div>
   ),
 });
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
+
 // ── Palette (matches CSS vars) ────────────────────────────────────────────────
 const C = {
-  teal:   "#14d9b4",
-  amber:  "#f59e0b",
-  rose:   "#f43f5e",
-  blue:   "#3b82f6",
+  teal: "#14d9b4",
+  amber: "#f59e0b",
+  rose: "#f43f5e",
+  blue: "#3b82f6",
   violet: "#8b5cf6",
-  dim:    "#3d5068",
+  dim: "#3d5068",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function fmt(n: number) { return n.toLocaleString(); }
+function fmt(n: number) {
+  return n.toLocaleString();
+}
 
 function StatCard({
-  label, value, accent, sub,
+  label,
+  value,
+  accent,
+  sub,
 }: {
-  label: string; value: string | number; accent?: string; sub?: string;
+  label: string;
+  value: string | number;
+  accent?: string;
+  sub?: string;
 }) {
   return (
     <div
@@ -53,11 +72,13 @@ function StatCard({
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const [query, setQuery]     = useState("");
-  const [result, setResult]   = useState<AnalysisResult | null>(null);
+  const [query, setQuery] = useState("");
+  const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
-  const [phase, setPhase]     = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [phase, setPhase] = useState("");
+
+   console.log("API URL:", API); 
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -82,7 +103,10 @@ export default function HomePage() {
     try {
       const res = await fetch(`${API}/api/analyze`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json", // ← ADD THIS LINE
+        },
         body: JSON.stringify({ location: query }),
       });
       const data = await res.json();
@@ -100,30 +124,48 @@ export default function HomePage() {
   // ── Chart data ────────────────────────────────────────────────────────────
   const barData = result
     ? [
-        { name: "Residential", count: result.residentialBuildings, fill: C.teal   },
-        { name: "Commercial",  count: result.commercialBuildings,  fill: C.amber  },
-        { name: "Industrial",  count: result.industrialBuildings,  fill: C.rose   },
-        { name: "Other",       count: result.otherBuildings,       fill: C.dim    },
+        {
+          name: "Residential",
+          count: result.residentialBuildings,
+          fill: C.teal,
+        },
+        {
+          name: "Commercial",
+          count: result.commercialBuildings,
+          fill: C.amber,
+        },
+        { name: "Industrial", count: result.industrialBuildings, fill: C.rose },
+        { name: "Other", count: result.otherBuildings, fill: C.dim },
       ]
     : [];
 
   const pieData = result
     ? [
-        { name: "Residential", value: result.distribution.residentialPct, color: C.teal   },
-        { name: "Commercial",  value: result.distribution.commercialPct,  color: C.amber  },
-        { name: "Industrial",  value: result.distribution.industrialPct,  color: C.rose   },
-        { name: "Other",       value: result.distribution.otherPct,       color: C.dim    },
+        {
+          name: "Residential",
+          value: result.distribution.residentialPct,
+          color: C.teal,
+        },
+        {
+          name: "Commercial",
+          value: result.distribution.commercialPct,
+          color: C.amber,
+        },
+        {
+          name: "Industrial",
+          value: result.distribution.industrialPct,
+          color: C.rose,
+        },
+        { name: "Other", value: result.distribution.otherPct, color: C.dim },
       ].filter((d) => d.value > 0)
     : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className={styles.shell}>
-
       {/* ── Sidebar ───────────────────────────────────────────────────────── */}
       <aside className={styles.sidebar}>
         <div className={styles.sidebarTop}>
-
           {/* Brand */}
           <div className={styles.brand}>
             <span className={styles.brandMark}>US</span>
@@ -135,7 +177,9 @@ export default function HomePage() {
 
           {/* Search */}
           <form onSubmit={handleSubmit} className={styles.searchForm}>
-            <label className={styles.searchLabel} htmlFor="q">Location</label>
+            <label className={styles.searchLabel} htmlFor="q">
+              Location
+            </label>
             <div className={styles.searchRow}>
               <input
                 id="q"
@@ -146,18 +190,24 @@ export default function HomePage() {
                 autoComplete="off"
                 required
               />
-              <button className={styles.searchBtn} type="submit" disabled={loading}>
+              <button
+                className={styles.searchBtn}
+                type="submit"
+                disabled={loading}
+              >
                 {loading ? <span className={styles.dot} /> : "→"}
               </button>
             </div>
             {loading && <p className={styles.phase}>{phase}</p>}
-            {error   && <p className={styles.errMsg}>{error}</p>}
+            {error && <p className={styles.errMsg}>{error}</p>}
           </form>
 
           {/* Data credit */}
           <p className={styles.dataCredit}>
-            Buildings via <strong>OpenStreetMap</strong> + Overpass API<br />
-            Population via <strong>WorldPop</strong> + heuristics<br />
+            Buildings via <strong>OpenStreetMap</strong> + Overpass API
+            <br />
+            Population via <strong>WorldPop</strong> + heuristics
+            <br />
             Geocoding via <strong>Nominatim</strong>
           </p>
         </div>
@@ -168,28 +218,57 @@ export default function HomePage() {
             <p className={styles.locName}>{result.location.displayName}</p>
 
             <div className={styles.statGrid}>
-              <StatCard label="Total Buildings"  value={result.totalBuildings}       accent={C.teal}   />
-              <StatCard label="Residential"      value={result.residentialBuildings} accent={C.teal}   />
-              <StatCard label="Commercial"       value={result.commercialBuildings}  accent={C.amber}  />
-              <StatCard label="Industrial"       value={result.industrialBuildings}  accent={C.rose}   />
-              <StatCard label="Apartments"       value={result.apartments}           accent={C.blue}   />
-              <StatCard label="Houses"           value={result.houses}               accent={C.violet} />
+              <StatCard
+                label="Total Buildings"
+                value={result.totalBuildings}
+                accent={C.teal}
+              />
+              <StatCard
+                label="Residential"
+                value={result.residentialBuildings}
+                accent={C.teal}
+              />
+              <StatCard
+                label="Commercial"
+                value={result.commercialBuildings}
+                accent={C.amber}
+              />
+              <StatCard
+                label="Industrial"
+                value={result.industrialBuildings}
+                accent={C.rose}
+              />
+              <StatCard
+                label="Apartments"
+                value={result.apartments}
+                accent={C.blue}
+              />
+              <StatCard
+                label="Houses"
+                value={result.houses}
+                accent={C.violet}
+              />
             </div>
 
             <div className={styles.popBlock}>
               <div className={styles.popRow}>
                 <div>
                   <span className={styles.popLabel}>Est. Population</span>
-                  <strong className={styles.popValue}>{fmt(result.estimatedPopulation)}</strong>
+                  <strong className={styles.popValue}>
+                    {fmt(result.estimatedPopulation)}
+                  </strong>
                 </div>
                 <div>
                   <span className={styles.popLabel}>Density</span>
                   <strong className={styles.popValue}>
-                    {fmt(result.populationDensity)}<small> /km²</small>
+                    {fmt(result.populationDensity)}
+                    <small> /km²</small>
                   </strong>
                 </div>
               </div>
-              <p className={styles.popSource}>Source: {result.populationSource}</p>
+              <p className={styles.popSource}>
+                Source: {result.populationSource}
+              </p>
             </div>
 
             {result.fromCache && (
@@ -203,7 +282,6 @@ export default function HomePage() {
 
       {/* ── Main ──────────────────────────────────────────────────────────── */}
       <main className={styles.main}>
-
         {/* Map */}
         <div className={styles.mapWrap}>
           {result ? (
@@ -218,12 +296,14 @@ export default function HomePage() {
               <div className={styles.mapEmptyInner}>
                 <p className={styles.mapEmptyEyebrow}>Geospatial Analysis</p>
                 <h1 className={styles.mapEmptyHeading}>
-                  Urban Intelligence<br /><em>from Open Data</em>
+                  Urban Intelligence
+                  <br />
+                  <em>from Open Data</em>
                 </h1>
                 <p className={styles.mapEmptyBody}>
                   Enter any city, town, or region to retrieve building counts,
-                  type distributions, and population estimates — powered entirely
-                  by OpenStreetMap, Overpass API, and WorldPop.
+                  type distributions, and population estimates — powered
+                  entirely by OpenStreetMap, Overpass API, and WorldPop.
                 </p>
               </div>
               <div className={styles.gridOverlay} aria-hidden />
@@ -234,7 +314,6 @@ export default function HomePage() {
         {/* Charts */}
         {result && (
           <div className={styles.chartsRow}>
-
             {/* Bar chart — building counts */}
             <div className={styles.chartCard}>
               <h2 className={styles.chartTitle}>Building Counts</h2>
@@ -245,12 +324,22 @@ export default function HomePage() {
                 >
                   <XAxis
                     dataKey="name"
-                    tick={{ fill: C.dim, fontSize: 10, fontFamily: "JetBrains Mono" }}
-                    axisLine={false} tickLine={false}
+                    tick={{
+                      fill: C.dim,
+                      fontSize: 10,
+                      fontFamily: "JetBrains Mono",
+                    }}
+                    axisLine={false}
+                    tickLine={false}
                   />
                   <YAxis
-                    tick={{ fill: C.dim, fontSize: 10, fontFamily: "JetBrains Mono" }}
-                    axisLine={false} tickLine={false}
+                    tick={{
+                      fill: C.dim,
+                      fontSize: 10,
+                      fontFamily: "JetBrains Mono",
+                    }}
+                    axisLine={false}
+                    tickLine={false}
                   />
                   <Tooltip
                     contentStyle={{
@@ -265,7 +354,9 @@ export default function HomePage() {
                     cursor={{ fill: "rgba(255,255,255,0.03)" }}
                   />
                   <Bar dataKey="count" radius={[3, 3, 0, 0]}>
-                    {barData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                    {barData.map((d, i) => (
+                      <Cell key={i} fill={d.fill} />
+                    ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -280,16 +371,21 @@ export default function HomePage() {
                     data={pieData}
                     dataKey="value"
                     nameKey="name"
-                    cx="50%" cy="50%"
-                    innerRadius={50} outerRadius={78}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={78}
                     paddingAngle={3}
                     label={({ value }) => `${value}%`}
                     labelLine={false}
                   >
-                    {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                    {pieData.map((d, i) => (
+                      <Cell key={i} fill={d.color} />
+                    ))}
                   </Pie>
                   <Legend
-                    iconType="circle" iconSize={7}
+                    iconType="circle"
+                    iconSize={7}
                     wrapperStyle={{
                       fontSize: 10,
                       fontFamily: "JetBrains Mono",
@@ -316,10 +412,26 @@ export default function HomePage() {
               <h2 className={styles.chartTitle}>Breakdown</h2>
               <div className={styles.breakdown}>
                 {[
-                  { label: "Residential", pct: result.distribution.residentialPct, color: C.teal   },
-                  { label: "Commercial",  pct: result.distribution.commercialPct,  color: C.amber  },
-                  { label: "Industrial",  pct: result.distribution.industrialPct,  color: C.rose   },
-                  { label: "Other",       pct: result.distribution.otherPct,       color: C.dim    },
+                  {
+                    label: "Residential",
+                    pct: result.distribution.residentialPct,
+                    color: C.teal,
+                  },
+                  {
+                    label: "Commercial",
+                    pct: result.distribution.commercialPct,
+                    color: C.amber,
+                  },
+                  {
+                    label: "Industrial",
+                    pct: result.distribution.industrialPct,
+                    color: C.rose,
+                  },
+                  {
+                    label: "Other",
+                    pct: result.distribution.otherPct,
+                    color: C.dim,
+                  },
                 ].map((row) => (
                   <div key={row.label} className={styles.breakdownRow}>
                     <span className={styles.breakdownLabel}>{row.label}</span>
@@ -352,7 +464,6 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
-
           </div>
         )}
       </main>

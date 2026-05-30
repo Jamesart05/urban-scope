@@ -3,6 +3,9 @@ import { config } from "../config.js";
 
 const http = axios.create({
   timeout: config.overpass.httpTimeout,
+  headers: {
+    "User-Agent": "UrbanScope/1.0 (chukwukachukwuebuka4@gmail.com)",
+  },
 });
 
 // ── Overpass QL builder ───────────────────────────────────────────────────────
@@ -20,13 +23,38 @@ function buildQuery(bbox, timeoutSecs) {
   const bb = `${south},${west},${north},${east}`;
 
   // Tags we want to count individually
-  const residentialTags = ["residential", "house", "detached", "semidetached_house", "apartments", "bungalow", "cabin", "dormitory", "farm", "terrace"];
-  const commercialTags  = ["commercial", "retail", "office", "supermarket", "hotel", "warehouse", "industrial", "garage", "garages", "service"];
-
-  const lines = [
-    `[out:json][timeout:${timeoutSecs}];`,
-    `(`,
+  // Expanded residential tags for Africa
+  const residentialTags = [
+    "residential",
+    "house",
+    "detached",
+    "semidetached_house",
+    "apartments",
+    "bungalow",
+    "cabin",
+    "dormitory",
+    "farm",
+    "terrace",
+    "yes", // ← critical for Africa
+    "hut", // ← common in rural areas
+    "shack", // ← informal settlements
+    "dwelling", // ← alternative tag
+    "residential;construction", // ← under construction
   ];
+  const commercialTags = [
+    "commercial",
+    "retail",
+    "office",
+    "supermarket",
+    "hotel",
+    "warehouse",
+    "industrial",
+    "garage",
+    "garages",
+    "service",
+  ];
+
+  const lines = [`[out:json][timeout:${timeoutSecs}];`, `(`];
 
   // All buildings in bbox (way + relation)
   lines.push(`  way["building"](${bb});`);
@@ -40,19 +68,22 @@ function buildQuery(bbox, timeoutSecs) {
 /**
  * Build a detailed query that breaks down by building type.
  * Runs as a union of tagged subsets so we can count each category.
+ * 
+ * ✅ FIXED: Added "yes" to residential pattern to capture untagged buildings
+ * ✅ FIXED: Added amenity, shop, and office tags to commercial detection
  */
 function buildDetailedQuery(bbox, timeoutSecs) {
   const { south, west, north, east } = bbox;
   const bb = `${south},${west},${north},${east}`;
-  const t  = timeoutSecs;
+  const t = timeoutSecs;
 
   return `
 [out:json][timeout:${t}];
 
-// ── residential ──────────────────────────────────────────────────────────────
+// ── residential (includes "yes" for generic building tags) ────────────────────
 (
-  way["building"~"^(residential|house|detached|semidetached_house|bungalow|cabin|farm|terrace|dormitory)$"](${bb});
-  relation["building"~"^(residential|house|detached|semidetached_house|bungalow|cabin|farm|terrace|dormitory)$"](${bb});
+  way["building"~"^(residential|house|detached|semidetached_house|bungalow|cabin|farm|terrace|dormitory|yes|hut|shack|dwelling|residential;construction)$"](${bb});
+  relation["building"~"^(residential|house|detached|semidetached_house|bungalow|cabin|farm|terrace|dormitory|yes|hut|shack|dwelling|residential;construction)$"](${bb});
 )->.residential;
 
 // ── apartments ───────────────────────────────────────────────────────────────
@@ -61,16 +92,35 @@ function buildDetailedQuery(bbox, timeoutSecs) {
   relation["building"~"^(apartments|flats)$"](${bb});
 )->.apartments;
 
-// ── commercial ───────────────────────────────────────────────────────────────
+// ── commercial (EXPANDED - includes amenity, shop, and office tags) ──────────
 (
+  // Original building-based commercial
   way["building"~"^(commercial|retail|office|supermarket|hotel|bank|hospital|school|university|church|mosque|cathedral|synagogue|temple|government|civic)$"](${bb});
   relation["building"~"^(commercial|retail|office|supermarket|hotel|bank|hospital|school|university|church|mosque|cathedral|synagogue|temple|government|civic)$"](${bb});
+  
+  // Amenity-based commercial (catches shops/restaurants in generic buildings)
+  way["amenity"~"^(cafe|restaurant|fast_food|pub|bar|nightclub|food_court|bistro|ice_cream|coffee_shop|juice_bar)$"](${bb});
+  way["shop"~"^(supermarket|convenience|clothes|electronics|furniture|mall|department_store|kiosk|market|bakery|butcher|greengrocer|beauty|hairdresser|florist|books|stationery|jewelry|optician|shoes|bags|sports|toys|hardware|doityourself|car_repair|car_parts|bicycle|pharmacy|chemist|alcohol|beverages|chocolate|tea|coffee|confectionery)$"](${bb});
+  way["office"~"^(company|it|real_estate|estate_agent|lawyer|accountant|consulting|architect|engineering|travel_agent|insurance)$"](${bb});
+  way["tourism"~"^(hotel|hostel|guest_house|motel|apartment)$"](${bb});
+  
+  // Nigerian-specific commercial tags
+  way["building"~"^(shop|kiosk|stand|market|booth)$"](${bb});
+  way["marketplace"](${bb});
+  
+  relation["amenity"~"^(cafe|restaurant|fast_food|pub|bar|nightclub|food_court)$"](${bb});
+  relation["shop"~"^(supermarket|convenience|clothes|electronics|furniture|mall|department_store|kiosk|market)$"](${bb});
+  relation["office"~"^(company|it|real_estate|estate_agent)$"](${bb});
 )->.commercial;
 
 // ── industrial / warehouse ───────────────────────────────────────────────────
 (
-  way["building"~"^(industrial|warehouse|factory|storage_tank|garage|garages|service)$"](${bb});
-  relation["building"~"^(industrial|warehouse|factory|storage_tank|garage|garages|service)$"](${bb});
+  way["building"~"^(industrial|warehouse|factory|storage_tank|garage|garages|service|manufacturing|production|plant|mill|refinery)$"](${bb});
+  relation["building"~"^(industrial|warehouse|factory|storage_tank|garage|garages|service|manufacturing|production|plant|mill|refinery)$"](${bb});
+  
+  // Industrial via landuse
+  way["landuse"~"^(industrial|quarry|landfill|railway)$"](${bb});
+  relation["landuse"~"^(industrial|quarry|landfill|railway)$"](${bb});
 )->.industrial;
 
 // ── ALL buildings (for total) ─────────────────────────────────────────────────
@@ -94,7 +144,12 @@ async function runQuery(ql) {
   const { data } = await http.post(
     config.overpass.baseUrl,
     `data=${encodeURIComponent(ql)}`,
-    { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "UrbanScope/1.0 (chukwukachukwuebuka4@gmail.com)",
+      },
+    },
   );
   return data;
 }
@@ -140,7 +195,10 @@ export async function queryBuildings(bbox) {
   const houses = Math.max(0, residential - apartments);
 
   // Anything not tagged residential/apartment/commercial/industrial
-  const other = Math.max(0, total - residential - apartments - commercial - industrial);
+  const other = Math.max(
+    0,
+    total - residential - apartments - commercial - industrial,
+  );
 
   return {
     total,
