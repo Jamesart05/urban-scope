@@ -3,7 +3,7 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: join(__dirname, "../.env") });
+dotenv.config();
 
 // Dynamic imports AFTER dotenv has loaded the env vars
 const { createApp } = await import("./app.js");
@@ -15,7 +15,9 @@ async function startServer() {
   const app = createApp();
 
   app.listen(config.port, () => {
-    console.log(`UrbanScope backend listening on http://localhost:${config.port}`);
+    console.log(
+      `UrbanScope backend listening on http://localhost:${config.port}`,
+    );
   });
 }
 

@@ -29,7 +29,6 @@ const MapView = dynamic(() => import("./components/MapView"), {
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
-
 // ── Palette (matches CSS vars) ────────────────────────────────────────────────
 const C = {
   teal: "#14d9b4",
@@ -77,8 +76,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState("");
-
-   console.log("API URL:", API); 
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
