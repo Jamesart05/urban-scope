@@ -199,14 +199,14 @@ export default function HomePage() {
             {error && <p className={styles.errMsg}>{error}</p>}
           </form>
 
-          {/* Data credit */}
-          <p className={styles.dataCredit}>
+          /* {/* Data credit */}
+          {/* <p className={styles.dataCredit}>
             Buildings via <strong>OpenStreetMap</strong> + Overpass API
             <br />
             Population via <strong>WorldPop</strong> + heuristics
             <br />
             Geocoding via <strong>Nominatim</strong>
-          </p>
+          </p> */}
         </div>
 
         {/* Stats — only visible after a result */}
@@ -299,8 +299,7 @@ export default function HomePage() {
                 </h1>
                 <p className={styles.mapEmptyBody}>
                   Enter any city, town, or region to retrieve building counts,
-                  type distributions, and population estimates — powered
-                  entirely by OpenStreetMap, Overpass API, and WorldPop.
+                  building type distributions, and population estimates
                 </p>
               </div>
               <div className={styles.gridOverlay} aria-hidden />
