@@ -199,7 +199,7 @@ export default function HomePage() {
             {error && <p className={styles.errMsg}>{error}</p>}
           </form>
 
-          /* {/* Data credit */}
+          {/* Data credit */}
           {/* <p className={styles.dataCredit}>
             Buildings via <strong>OpenStreetMap</strong> + Overpass API
             <br />
